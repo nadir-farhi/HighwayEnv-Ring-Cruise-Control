@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cruise Control Ring Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: control rail on the left, ring + summary on top, three synchronised time plots below. */
+:root {
+  --bg: #eef1f4;          /* cool asphalt-grey ground */
+  --panel: #ffffff;
+  --ink: #16212c;
+  --ink-2: #4a5866;
+  --ink-3: #7b8896;
+  --rule: #d5dbe2;
+  --road: #c9d0d8;
+  --accent: #c76a12;      /* road-sign amber */
+  --accent-soft: #f6e3cf;
+  --hl: #c76a12;
+  --line: #3d6fb0;
+  --good: #2f7d4f; --warn: #a36a00; --bad: #b3362f;
+  --slow: #d9622b; --fast: #2c64b8;
+  --seq0: #f6f9fd; --seq1: #cde2fb; --seq2: #86b6ef; --seq3: #3987e5; --seq4: #256abf; --seq5: #184f95; --seq6: #0d366b;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11171d; --panel: #18212a; --ink: #e8edf2; --ink-2: #aab6c2; --ink-3: #7d8a97; --rule: #2a3642; --road: #2c3844;
+  --accent: #f0a04b; --accent-soft: #3a2a19; --hl: #f0a04b; --line: #7fb0ec;
+  --good: #5dbb84; --warn: #e3b04b; --bad: #ef7b72; --slow: #f08a55; --fast: #6fa6ee;
+  --seq0: #18212a; --seq1: #1d3550; --seq2: #22507f; --seq3: #2f6fb4; --seq4: #4f8fd6; --seq5: #86b6ef; --seq6: #cde2fb;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #11171d; --panel: #18212a; --ink: #e8edf2; --ink-2: #aab6c2; --ink-3: #7d8a97; --rule: #2a3642; --road: #2c3844;
+  --accent: #f0a04b; --accent-soft: #3a2a19; --hl: #f0a04b; --line: #7fb0ec;
+  --good: #5dbb84; --warn: #e3b04b; --bad: #ef7b72; --slow: #f08a55; --fast: #6fa6ee;
+  --seq0: #18212a; --seq1: #1d3550; --seq2: #22507f; --seq3: #2f6fb4; --seq4: #4f8fd6; --seq5: #86b6ef; --seq6: #cde2fb;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 18px 40px; }
+.wrap { max-width: 1320px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: 30px; letter-spacing: .01em; margin: 0; text-wrap: balance; }
+.sub { color: var(--ink-2); margin: 0; max-width: 72ch; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-display); font-weight: 600; font-size: 17px;
+  letter-spacing: .04em; padding: 2px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+.layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r); padding: 14px 16px; min-width: 0; }
+aside.panel { display: grid; gap: 14px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+@media (max-width: 900px) { aside.panel { position: static; } }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); margin: 0 0 8px; }
+.group { display: grid; gap: 10px; }
+.ctl { display: grid; gap: 4px; }
+.ctl label, .lbl { font-weight: 500; font-size: 13px; color: var(--ink-2); display: flex; justify-content: space-between; gap: 8px; }
+.ctl output, .val { font-family: var(--f-mono); font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+input[type=number], select { width: 100%; font: 13px var(--f-mono); padding: 5px 7px; border-radius: 6px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--ink-2); font: 500 13px var(--f-body); padding: 6px 4px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+.btn { border: 1px solid var(--rule); background: var(--bg); color: var(--ink); font: 500 13px var(--f-body); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+button:focus-visible, input:focus-visible, select:focus-visible, canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note { font-size: 12px; color: var(--ink-3); margin: 0; }
+.msg { font-size: 12px; padding: 6px 8px; border-radius: 6px; border-left: 3px solid var(--warn); background: var(--bg); color: var(--ink-2); }
+details summary { cursor: pointer; font-weight: 500; color: var(--ink-2); }
+main { display: grid; gap: 16px; min-width: 0; }
+.top { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 1100px) { .top { grid-template-columns: minmax(0, 1fr); } }
+.ringbox { display: grid; gap: 10px; }
+.ringcanvas { width: 100%; aspect-ratio: 1 / 1; max-width: 100%; display: block; }
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.transport input[type=range] { flex: 1 1 160px; }
+.tread { font-family: var(--f-mono); font-size: 13px; min-width: 8ch; text-align: right; font-variant-numeric: tabular-nums; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; align-content: start; }
+.stat { padding: 9px 4px; border-bottom: 1px solid var(--rule); display: grid; gap: 1px; }
+.stat .k { font-size: 12px; color: var(--ink-3); }
+.stat .v { font-family: var(--f-display); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stat .v small { font-family: var(--f-body); font-size: 12px; color: var(--ink-3); font-weight: 400; margin-left: 3px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pill { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-2); }
+.pill.ok { border-color: var(--good); color: var(--good); } .pill.no { border-color: var(--bad); color: var(--bad); }
+.plots { display: grid; gap: 16px; }
+.plothead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; margin-bottom: 6px; }
+.plothead h3 { font-family: var(--f-display); font-weight: 600; font-size: 19px; margin: 0; }
+.readout { font-family: var(--f-mono); font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.plot { width: 100%; height: 250px; display: block; cursor: crosshair; touch-action: pan-y; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--ink-2); align-items: center; }
+.sw { display: inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+.grad { display: inline-block; width: 90px; height: 9px; border-radius: 3px; vertical-align: middle; margin: 0 5px; }
+.about { font-size: 13px; color: var(--ink-2); display: grid; gap: 8px; max-width: 80ch; }
+.about code, .eq { font-family: var(--f-mono); font-size: 12.5px; color: var(--ink); }
+.eq { display: block; overflow-x: auto; white-space: pre; padding: 8px 10px; background: var(--bg); border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Cruise Control Ring Simulator</h1>
+    <span class="chip" id="modelChip">DCC</span>
+    <p class="sub">Cumulated-flow models KW, DKW, CC and DCC on a ring road. Change the number of sections <em>m</em>, the section length <em>l</em> and the damping weight <em>&alpha;</em>, switch the cruise control on or off, and watch the traffic.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel" aria-label="Parameters">
+      <div class="group">
+        <h2>Main parameters</h2>
+        <div class="ctl"><label for="m">Sections <i>m</i> <output id="mOut" for="m"></output></label><input type="range" id="m" min="4" max="100" step="1" value="30"></div>
+        <div class="ctl"><label for="l">Section length <i>l</i> <output id="lOut" for="l"></output></label><input type="range" id="l" min="50" max="500" step="10" value="200"></div>
+        <div class="ctl"><label for="alpha">Damping weight <i>&alpha;</i> <output id="aOut" for="alpha"></output></label><input type="range" id="alpha" min="0.05" max="1" step="0.05" value="0.5"></div>
+      </div>
+      <div class="group">
+        <h2>Cruise control</h2>
+        <div class="seg" role="group" aria-label="Cruise control">
+          <button type="button" id="ccOff" aria-pressed="false">Off</button>
+          <button type="button" id="ccOn" aria-pressed="true">On: cap at v&#772;</button>
+        </div>
+        <p class="note">With CC on, every car is capped at the asymptotic mean speed v&#772; of the uncontrolled model (KW).</p>
+      </div>
+      <div class="group">
+        <h2>Initial cars</h2>
+        <div class="seg" role="group" aria-label="Initial condition">
+          <button type="button" data-ic="random" aria-pressed="true">Random</button>
+          <button type="button" data-ic="platoon" aria-pressed="false">Platoon</button>
+          <button type="button" data-ic="block" aria-pressed="false">Block</button>
+        </div>
+        <button type="button" class="btn" id="redraw">New random draw</button>
+        <p class="note" id="icNote"></p>
+      </div>
+      <details>
+        <summary>More parameters</summary>
+        <div class="group" style="margin-top:10px">
+          <div class="row2">
+            <div class="ctl"><label for="v">Free speed v (km/h)</label><input type="number" id="v" min="10" max="200" step="5" value="90"></div>
+            <div class="ctl"><label for="w">Wave speed w (km/h)</label><input type="number" id="w" min="5" max="100" step="1" value="30"></div>
+          </div>
+          <div class="row2">
+            <div class="ctl"><label for="rhomax">Jam density (veh/km)</label><input type="number" id="rhomax" min="20" max="250" step="5" value="100"></div>
+            <div class="ctl"><label for="T">Horizon (s)</label><input type="number" id="T" min="200" max="20000" step="100" value="3600"></div>
+          </div>
+          <div class="row2">
+            <div class="ctl"><label for="fill">Random fill (% of jam)</label><input type="number" id="fill" min="5" max="95" step="5" value="40"></div>
+            <div class="ctl"><label for="dt">Time step &Delta;t (s)</label><input type="number" id="dt" min="0.5" max="60" step="0.5" value="8" disabled></div>
+          </div>
+          <label class="lbl" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="dtAuto" checked> &Delta;t = l / v (free travel time of a section)</label>
+        </div>
+      </details>
+      <div id="msgs" class="group" role="status" aria-live="polite"></div>
+    </aside>
+
+    <main>
+      <div class="top">
+        <section class="panel ringbox" aria-label="Ring animation">
+          <div class="plothead"><h3>Cars on the ring</h3><span class="readout" id="ringRead">Hover a section</span></div>
+          <canvas id="ring" class="ringcanvas" tabindex="0" aria-label="Animated ring road: cars coloured by speed, sections shaded by density"></canvas>
+          <div class="legend"><span>slow<span class="grad" id="speedGrad"></span>fast</span><span>section shade = density</span></div>
+          <div class="transport">
+            <button type="button" class="btn primary" id="play">Pause</button>
+            <button type="button" class="btn" id="restart">Restart</button>
+            <select id="speed" aria-label="Playback speed" style="width:auto">
+              <option value="5">5&times;</option><option value="20" selected>20&times;</option><option value="60">60&times;</option><option value="200">200&times;</option>
+            </select>
+            <input type="range" id="scrub" min="0" max="1000" step="1" value="0" aria-label="Time">
+            <span class="tread" id="tRead">0 s</span>
+          </div>
+        </section>
+        <section class="panel" aria-label="Summary">
+          <h2>Summary</h2>
+          <div class="stats" id="stats"></div>
+          <div class="checks" id="checks"></div>
+        </section>
+      </div>
+
+      <section class="panel plots">
+        <div>
+          <div class="plothead"><h3>Cumulated flows q<sub>i</sub>(t)</h3><span class="readout" id="rq"></span></div>
+          <canvas class="plot" id="pq" aria-label="Cumulated flows over time"></canvas>
+          <div class="legend"><span><span class="sw" style="background:var(--line);opacity:.45"></span>all sections</span><span><span class="sw" style="background:var(--hl)"></span>section <b id="hlName">1</b> (click the ring to choose)</span><span><span class="sw" style="background:var(--ink);height:0;border-top:2px dashed var(--ink)"></span>theory q&#772; t</span></div>
+        </div>
+        <div>
+          <div class="plothead"><h3>Density of each section &rho;<sub>i</sub>(t)</h3><span class="readout" id="rr"></span></div>
+          <canvas class="plot" id="pr" aria-label="Section densities over time"></canvas>
+        </div>
+        <div>
+          <div class="plothead"><h3>Space-time density</h3><span class="readout" id="rs"></span></div>
+          <canvas class="plot" id="ps" aria-label="Space-time diagram of density"></canvas>
+          <div class="legend"><span>0<span class="grad" id="seqGrad"></span><span id="seqMax">100</span> veh/km</span><span>click or drag any plot to move in time</span></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <details>
+          <summary>About the models</summary>
+          <div class="about" style="margin-top:10px">
+            <p>Cumulated flow q<sub>i</sub>(t) = cars that entered section i by time t; N<sub>i</sub> = n<sub>i</sub> + q<sub>i</sub> &minus; q<sub>i+1</sub> cars are in section i. With free places n&#772;<sub>i</sub> = n<sup>max</sup> &minus; n<sub>i</sub>:</p>
+            <span class="eq">q_i(t) = (1-&alpha;) q_i(t-&Delta;t) + &alpha; min{ q_{i-1}(t - l/v) + n_{i-1},
+                                [ q_{i-1}(t - l/v&#772;) + n_{i-1} ]   (CC on),
+                                q_{i+1}(t - l/w) + n&#772;_i }</span>
+            <p>&alpha; = 1 gives KW (CC off) or CC (CC on); &alpha; &lt; 1 gives DKW or DCC. Damping adds a relaxation time &epsilon; = &Delta;t(1&minus;&alpha;)/&alpha; on every arc, and the limit flow is the minimum over the forward ring, the backward ring and the two-arc circuits of tokens / (delay + &epsilon; &times; arcs).</p>
+            <p>Delays are whole numbers of time steps; values that do not fall on the grid are rounded, and the panel says so. The cars on the ring are drawn from the cumulated flows by Newell's construction: car c is where the cumulative count N(x,t) equals c, so cars are evenly spread inside each section and move exactly as the flows say.</p>
+          </div>
+        </details>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const P = { m: 30, l: 200, alpha: 0.5, cc: true, ic: 'random', v: 90, w: 30, rhomax: 100, T: 3600, fill: 40, dt: 8, dtAuto: true, seed: 7 };
+let S = null;                 // simulation result
+let tNow = 0, playing = true, hl = 0, lastFrame = 0;
+const css = () => getComputedStyle(document.documentElement);
+let C = {};
+function readColors() {
+  const s = css(); const g = k => s.getPropertyValue(k).trim();
+  C = { ink: g('--ink'), ink2: g('--ink-2'), ink3: g('--ink-3'), rule: g('--rule'), road: g('--road'), panel: g('--panel'), bg: g('--bg'),
+        line: g('--line'), hl: g('--hl'), slow: g('--slow'), fast: g('--fast'),
+        seq: ['--seq0','--seq1','--seq2','--seq3','--seq4','--seq5','--seq6'].map(g) };
+  C.seqRGB = C.seq.map(hexRGB); C.slowRGB = hexRGB(C.slow); C.fastRGB = hexRGB(C.fast);
+  $('seqGrad').style.background = `linear-gradient(90deg, ${C.seq.join(',')})`;
+  $('speedGrad').style.background = `linear-gradient(90deg, ${C.slow}, ${C.fast})`;
+}
+function hexRGB(h) { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function seqColor(x) {             // x in [0,1]
+  x = Math.max(0, Math.min(1, x)) * 6; const i = Math.min(5, Math.floor(x)), f = x - i;
+  const a = C.seqRGB[i], b = C.seqRGB[i + 1]; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+function mix(a, b, f) { return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`; }
+
+// ---------- random generator ----------
+function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- initial condition ----------
+function initial(m, nmax, ic, fill, seed) {
+  const cap = Math.floor(nmax + 1e-9), x = new Array(m).fill(0);
+  if (ic === 'platoon') { const k = Math.max(1, Math.round(m / 4)); for (let i = 0; i < k; i++) x[i] = Math.round(0.4 * nmax); return x; }
+  if (ic === 'block') { const k = Math.max(1, Math.min(m - 1, Math.round(0.4 * m))); for (let i = 0; i < k; i++) x[i] = cap; return x; }
+  const r = rng(seed), n = Math.round(fill / 100 * nmax * m);
+  const wts = x.map(() => -Math.log(1 - r())); const s = wts.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < m; i++) x[i] = Math.min(cap, Math.round(wts[i] / s * n));
+  let tot = x.reduce((a, b) => a + b, 0), guard = 0;
+  while (tot !== n && guard++ < 100000) { const i = Math.floor(r() * m); if (tot < n && x[i] < cap) { x[i]++; tot++; } else if (tot > n && x[i] > 0) { x[i]--; tot--; } }
+  return x;
+}
+
+// ---------- simulation ----------
+function simulate(P) {
+  const m = P.m, l = P.l, v = P.v / 3.6, w = P.w / 3.6, nmax = P.rhomax * l / 1000, L = m * l;
+  const warn = [];
+  const dt = P.dtAuto ? l / v : P.dt;
+  const dvx = l / v / dt, dwx = l / w / dt;
+  const dv = Math.max(1, Math.round(dvx)), dw = Math.max(1, Math.round(dwx));
+  if (Math.abs(dvx - dv) > 1e-6 || Math.abs(dwx - dw) > 1e-6) warn.push(`Delays rounded to the time grid: l/v = ${dvx.toFixed(2)} and l/w = ${dwx.toFixed(2)} steps are used as ${dv} and ${dw}.`);
+  if (dvx < 0.5) warn.push('The time step is longer than the free travel time of a section; choose a smaller Δt.');
+  const n0 = initial(m, nmax, P.ic, P.fill, P.seed); const n = n0.reduce((a, b) => a + b, 0);
+  const ns = n / m, tv = dv * dt, tw = dw * dt;
+  const alpha = P.alpha, eps = alpha < 1 ? dt * (1 - alpha) / alpha : 0;
+  let qKW = Math.min(ns / tv, (nmax - ns) / tw, nmax / (tv + tw));
+  const vbar = n > 0 ? qKW * L / n : v;
+  let dc = null, dcx = null;
+  if (P.cc && n > 0 && qKW > 0) {
+    dcx = (l / vbar) / dt; dc = Math.max(dv, Math.round(dcx));
+    if (dc > dv && Math.abs(dcx - Math.round(dcx)) > 1e-6) warn.push(`Set-speed delay l/v̄ = ${dcx.toFixed(2)} steps is rounded to ${dc}; the long-run flow can then differ from KW.`);
+  }
+  const dF = (P.cc && dc) ? Math.max(dv, dc) * dt : tv;
+  const qTh = n <= 0 || n >= m * nmax ? 0 : Math.min(n / (m * dF + m * eps), (m * nmax - n) / (m * tw + m * eps), nmax / (dF + tw + 2 * eps));
+  const K = Math.max(10, Math.round(P.T / dt));
+  const q = new Float64Array((K + 1) * m), N = new Float64Array((K + 1) * m);
+  const D = Math.max(dv, dw, dc || 0);
+  for (let t = 1; t <= K; t++) {
+    const bv = t - dv > 0 ? (t - dv) * m : -1, bw = t - dw > 0 ? (t - dw) * m : -1, bc = (dc && t - dc > 0) ? (t - dc) * m : -1;
+    const cur = t * m, prev = (t - 1) * m;
+    for (let i = 0; i < m; i++) {
+      const im = (i - 1 + m) % m, ip = (i + 1) % m;
+      let F = (bv >= 0 ? q[bv + im] : 0) + n0[im];
+      const down = (bw >= 0 ? q[bw + ip] : 0) + nmax - n0[i]; if (down < F) F = down;
+      if (dc) { const c = (bc >= 0 ? q[bc + im] : 0) + n0[im]; if (c < F) F = c; }
+      q[cur + i] = alpha >= 1 ? F : (1 - alpha) * q[prev + i] + alpha * F;
+    }
+  }
+  let minN = Infinity, maxN = -Infinity, mono = true;
+  for (let t = 0; t <= K; t++) for (let i = 0; i < m; i++) {
+    const val = n0[i] + q[t * m + i] - q[t * m + (i + 1) % m]; N[t * m + i] = val;
+    if (val < minN) minN = val; if (val > maxN) maxN = val;
+    if (t > 0 && q[t * m + i] < q[(t - 1) * m + i] - 1e-9) mono = false;
+  }
+  const h = Math.floor(K / 2); let sl = 0; for (let i = 0; i < m; i++) sl += (q[K * m + i] - q[h * m + i]); sl /= m * (K - h) * dt;
+  let sd0 = 0, sdK = 0; const mean = ns;
+  for (let i = 0; i < m; i++) { sd0 += (N[i] - mean) ** 2; sdK += (N[K * m + i] - mean) ** 2; }
+  const G = new Float64Array(m + 1); for (let i = m - 1; i >= 0; i--) G[i] = G[i + 1] + n0[i];
+  if (n === 0) warn.push('The ring is empty: nothing moves.');
+  if (n > 0 && n >= Math.floor(nmax) * m) warn.push('Every section is full: nothing can move.');
+  return { m, l, L, dt, K, q, N, n0, n, nmax, ns, dv, dw, dc, dcx, eps, alpha, qKW, qTh, qSim: sl, vbar, minN, maxN, mono,
+           sd0: Math.sqrt(sd0 / m), sdK: Math.sqrt(sdK / m), G, warn, cc: P.cc && !!dc, T: K * dt };
+}
+
+// ---------- model name and summary ----------
+function modelName() { return (P.alpha >= 1 ? '' : 'D') + (P.cc ? 'CC' : 'KW'); }
+function fmt(x, d = 2) { return Number.isFinite(x) ? x.toFixed(d) : '–'; }
+function renderSummary() {
+  const s = S;
+  $('modelChip').textContent = `${modelName()} · α = ${P.alpha.toFixed(2)}`;
+  const items = [
+    ['Cars on the ring', `${s.n}<small>${fmt(s.n / (s.L / 1000), 1)} veh/km</small>`],
+    ['Capacity per section', `${fmt(s.nmax, 1)}<small>cars</small>`],
+    ['Limit flow, theory', `${fmt(s.qTh * 3600, 0)}<small>veh/h</small>`],
+    ['Limit flow, simulated', `${fmt(s.qSim * 3600, 0)}<small>veh/h</small>`],
+    ['Mean speed v̄ (KW)', `${fmt(s.vbar * 3.6, 1)}<small>km/h</small>`],
+    ['Relaxation time ε', `${fmt(s.eps, 1)}<small>s</small>`],
+    ['Time step Δt', `${fmt(s.dt, 2)}<small>s · delays ${s.dv}/${s.dw}${s.dc ? '/' + s.dc : ''}</small>`],
+    ['Spread of N<sub>i</sub>, start → end', `${fmt(s.sd0, 2)} → ${fmt(s.sdK, 2)}<small>cars</small>`],
+  ];
+  $('stats').innerHTML = items.map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+  const rel = s.qTh > 0 ? Math.abs(s.qSim - s.qTh) / s.qTh : 0;
+  const pills = [[Math.abs(s.N.slice(-s.m).reduce((a, b) => a + b, 0) - s.n) < 1e-6, 'cars conserved'],
+                 [s.minN > -1e-6 && s.maxN < s.nmax + 1e-6, '0 ≤ N ≤ capacity'], [s.mono, 'flows non-decreasing'],
+                 [rel < 0.02, s.qTh > 0 ? `simulated flow within ${fmt(100 * rel, 1)} % of theory` : 'no flow']];
+  $('checks').innerHTML = pills.map(([ok, t]) => `<span class="pill ${ok ? 'ok' : 'no'}">${ok ? '✓' : '✗'} ${t}</span>`).join('');
+  $('msgs').innerHTML = s.warn.map(t => `<div class="msg">${t}</div>`).join('');
+  $('seqMax').textContent = Math.round(P.rhomax);
+  const icTxt = { random: `${P.fill} % of the jam density, spread at random`, platoon: `first ${Math.max(1, Math.round(P.m / 4))} sections at 40 % of capacity`, block: `first ${Math.max(1, Math.min(P.m - 1, Math.round(0.4 * P.m)))} sections full` };
+  $('icNote').textContent = icTxt[P.ic];
+}
+
+// ---------- canvas helpers ----------
+function setup(cv) {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const W = Math.max(50, Math.round(r.width)), H = Math.max(50, Math.round(r.height));
+  if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return { ctx, W, H, dpr };
+}
+function niceTicks(lo, hi, n = 5) {
+  const span = hi - lo || 1, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map(f => f * mag).find(s => s >= step0) || mag * 10;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10)); return out;
+}
+const PAD = { l: 52, r: 14, t: 10, b: 30 };
+function axes(ctx, W, H, xmax, ylo, yhi, ylab) {
+  const x0 = PAD.l, x1 = W - PAD.r, y0 = H - PAD.b, y1 = PAD.t;
+  ctx.font = '11px "IBM Plex Mono", monospace'; ctx.textBaseline = 'middle';
+  ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.fillStyle = C.ink3;
+  for (const v of niceTicks(ylo, yhi, 4)) { const y = y0 - (v - ylo) / (yhi - ylo) * (y0 - y1); ctx.beginPath(); ctx.moveTo(x0, y + .5); ctx.lineTo(x1, y + .5); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(String(v), x0 - 6, y); }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (const v of niceTicks(0, xmax, Math.max(3, Math.floor((x1 - x0) / 90)))) { const x = x0 + v / xmax * (x1 - x0); ctx.fillText(String(v), x, y0 + 6); }
+  ctx.save(); ctx.translate(12, (y0 + y1) / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle'; ctx.fillText(ylab, 0, 0); ctx.restore();
+  ctx.textAlign = 'right'; ctx.fillText('time (s)', x1, y0 + 18 > H - 12 ? y0 + 6 : y0 + 18);
+  return { x0, x1, y0, y1, X: t => x0 + t / xmax * (x1 - x0), Y: v => y0 - (v - ylo) / (yhi - ylo) * (y0 - y1) };
+}
+
+// static layers are drawn once per simulation; the cursor is drawn on top every frame
+const layers = {};
+function drawStatic() {
+  if (!S) return;
+  for (const id of ['pq', 'pr', 'ps']) {
+    const cv = $(id); const { W, H, dpr } = setup(cv);
+    const off = document.createElement('canvas'); off.width = W * dpr; off.height = H * dpr;
+    const ctx = off.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    let ax;
+    if (id === 'pq') {
+      let qmax = 1; for (let i = 0; i < S.m; i++) qmax = Math.max(qmax, S.q[S.K * S.m + i]);
+      qmax = Math.max(qmax, S.qTh * S.T);
+      ax = axes(ctx, W, H, S.T, 0, qmax * 1.03, 'cars');
+      linesFor(ctx, ax, (t, i) => S.q[t * S.m + i]);
+      ctx.setLineDash([5, 4]); ctx.strokeStyle = C.ink; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(ax.X(0), ax.Y(0)); ctx.lineTo(ax.X(S.T), ax.Y(S.qTh * S.T)); ctx.stroke(); ctx.setLineDash([]);
+    } else if (id === 'pr') {
+      ax = axes(ctx, W, H, S.T, 0, P.rhomax * 1.02, 'veh/km');
+      linesFor(ctx, ax, (t, i) => S.N[t * S.m + i] / S.l * 1000);
+    } else {
+      ax = axes(ctx, W, H, S.T, 0, S.m, 'section');
+      const img = document.createElement('canvas'); img.width = S.K + 1; img.height = S.m;
+      const ic = img.getContext('2d'), data = ic.createImageData(S.K + 1, S.m);
+      for (let t = 0; t <= S.K; t++) for (let i = 0; i < S.m; i++) {
+        const c = seqColor(S.N[t * S.m + i] / S.nmax), p = ((S.m - 1 - i) * (S.K + 1) + t) * 4;
+        data.data[p] = c[0]; data.data[p + 1] = c[1]; data.data[p + 2] = c[2]; data.data[p + 3] = 255;
+      }
+      ic.putImageData(data, 0, 0); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, ax.x0, ax.y1, ax.x1 - ax.x0, ax.y0 - ax.y1);
+      ctx.fillStyle = C.ink3; ctx.font = '11px "IBM Plex Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    }
+    layers[id] = { off, ax, W, H };
+  }
+}
+function linesFor(ctx, ax, f) {
+  const step = Math.max(1, Math.floor(S.K / 900));
+  ctx.lineWidth = 1; ctx.strokeStyle = C.line; ctx.globalAlpha = Math.max(0.12, Math.min(0.5, 6 / S.m));
+  for (let i = 0; i < S.m; i++) { if (i === hl) continue; ctx.beginPath(); for (let t = 0; t <= S.K; t += step) { const x = ax.X(t * S.dt), y = ax.Y(f(t, i)); t ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); }
+  ctx.globalAlpha = 1; ctx.strokeStyle = C.hl; ctx.lineWidth = 2;
+  ctx.beginPath(); for (let t = 0; t <= S.K; t += step) { const x = ax.X(t * S.dt), y = ax.Y(f(t, hl)); t ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+}
+function drawCursors() {
+  for (const id of ['pq', 'pr', 'ps']) {
+    const L = layers[id]; if (!L) continue;
+    const { ctx, W, H } = setup($(id)); ctx.clearRect(0, 0, W, H); ctx.drawImage(L.off, 0, 0, W, H);
+    const x = L.ax.X(tNow); ctx.strokeStyle = C.ink; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x, L.ax.y1); ctx.lineTo(x, L.ax.y0); ctx.stroke();
+    if (id === 'ps') { const y = L.ax.y1 + (S.m - 1 - hl + 0.5) / S.m * (L.ax.y0 - L.ax.y1); ctx.strokeStyle = C.hl; ctx.lineWidth = 1.5; ctx.strokeRect(L.ax.x0 + .5, y - (L.ax.y0 - L.ax.y1) / S.m / 2, L.ax.x1 - L.ax.x0 - 1, (L.ax.y0 - L.ax.y1) / S.m); }
+  }
+  const k = Math.min(S.K, Math.round(tNow / S.dt));
+  $('rq').textContent = `t = ${tNow.toFixed(0)} s · q${hl + 1} = ${S.q[k * S.m + hl].toFixed(1)} cars`;
+  $('rr').textContent = `ρ${hl + 1} = ${(S.N[k * S.m + hl] / S.l * 1000).toFixed(1)} veh/km`;
+  let sd = 0; for (let i = 0; i < S.m; i++) sd += (S.N[k * S.m + i] - S.ns) ** 2;
+  $('rs').textContent = `spread of N at t: ${Math.sqrt(sd / S.m).toFixed(2)} cars`;
+}
+
+// ---------- microscopic reconstruction (Newell) ----------
+function qAt(tt, i) { const x = Math.max(0, Math.min(S.K, tt / S.dt)), k = Math.floor(x), f = x - k; const a = S.q[k * S.m + i]; return k >= S.K ? a : a + (S.q[(k + 1) * S.m + i] - a) * f; }
+function carPositions(tt, out) {
+  const m = S.m, B = new Float64Array(m + 1);
+  for (let i = 0; i < m; i++) B[i] = qAt(tt, i) + S.G[i];
+  B[m] = B[0] - S.n;
+  for (let c = 0; c < S.n; c++) {
+    let z = c + 0.5; const k = Math.floor((B[0] - z) / S.n); z += k * S.n;      // z in (B0 - n, B0]
+    let lo = 0, hi = m;                                                          // B non-increasing: find B[i] >= z > B[i+1]
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (B[mid] >= z) lo = mid; else hi = mid; }
+    const d = B[lo] - B[lo + 1]; const f = d > 1e-12 ? (B[lo] - z) / d : 0.5;
+    out[c] = ((lo + Math.min(1, Math.max(0, f))) * S.l) % S.L;
+  }
+  return out;
+}
+let posA = new Float64Array(0), posB = new Float64Array(0);
+function drawRing() {
+  const cv = $('ring'); const { ctx, W, H } = setup(cv); ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 26, band = Math.max(14, Math.min(26, R * 0.11));
+  const k = Math.min(S.K, Math.round(tNow / S.dt));
+  for (let i = 0; i < S.m; i++) {                      // sections shaded by density
+    const a0 = -Math.PI / 2 + i / S.m * 2 * Math.PI, a1 = -Math.PI / 2 + (i + 1) / S.m * 2 * Math.PI;
+    const c = seqColor(S.N[k * S.m + i] / S.nmax);
+    ctx.beginPath(); ctx.arc(cx, cy, R + band / 2, a0, a1); ctx.arc(cx, cy, R - band / 2, a1, a0, true); ctx.closePath();
+    ctx.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; ctx.fill();
+    ctx.strokeStyle = C.panel; ctx.lineWidth = 1; ctx.beginPath();
+    ctx.moveTo(cx + (R - band / 2) * Math.cos(a0), cy + (R - band / 2) * Math.sin(a0)); ctx.lineTo(cx + (R + band / 2) * Math.cos(a0), cy + (R + band / 2) * Math.sin(a0)); ctx.stroke();
+  }
+  { const a0 = -Math.PI / 2 + hl / S.m * 2 * Math.PI, a1 = -Math.PI / 2 + (hl + 1) / S.m * 2 * Math.PI;
+    ctx.strokeStyle = C.hl; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(cx, cy, R + band / 2 + 4, a0, a1); ctx.stroke(); }
+  if (posA.length !== S.n) { posA = new Float64Array(S.n); posB = new Float64Array(S.n); }
+  carPositions(tNow, posA); carPositions(Math.min(S.T, tNow + 1), posB);
+  const vfree = P.v / 3.6, carLen = Math.max(2.2, Math.min(7, 2 * Math.PI * R / Math.max(S.n, 1) * 0.55));
+  for (let c = 0; c < S.n; c++) {
+    let ds = posB[c] - posA[c]; if (ds < -S.L / 2) ds += S.L;
+    const sp = Math.max(0, ds) / 1, f = Math.min(1, sp / vfree);
+    const a = -Math.PI / 2 + posA[c] / S.L * 2 * Math.PI;
+    ctx.save(); ctx.translate(cx + R * Math.cos(a), cy + R * Math.sin(a)); ctx.rotate(a + Math.PI / 2);
+    ctx.fillStyle = mix(C.slowRGB, C.fastRGB, f); ctx.strokeStyle = C.panel; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-carLen / 2, -band * 0.28, carLen, band * 0.56, 1.5) : ctx.rect(-carLen / 2, -band * 0.28, carLen, band * 0.56); ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+  ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `600 ${Math.round(R * 0.2)}px "Barlow Condensed", sans-serif`; ctx.fillText(`${tNow.toFixed(0)} s`, cx, cy - R * 0.1);
+  ctx.font = `${Math.round(Math.max(11, R * 0.065))}px "IBM Plex Sans", sans-serif`; ctx.fillStyle = C.ink3;
+  ctx.fillText(`${S.n} cars · ${S.m} sections of ${S.l} m`, cx, cy + R * 0.08);
+  ctx.fillText('direction of travel ↻', cx, cy + R * 0.2);
+  ctx.font = '11px "IBM Plex Mono", monospace'; ctx.fillStyle = C.ink3;
+  for (const i of [0, Math.round(S.m / 4), Math.round(S.m / 2), Math.round(3 * S.m / 4)]) {
+    const a = -Math.PI / 2 + (i + 0.5) / S.m * 2 * Math.PI; ctx.fillText(String(i + 1), cx + (R + band / 2 + 14) * Math.cos(a), cy + (R + band / 2 + 14) * Math.sin(a));
+  }
+  ringGeom = { cx, cy, R, band };
+}
+let ringGeom = null;
+
+// ---------- animation loop ----------
+function frame(ts) {
+  if (S) {
+    if (playing) { const dtw = lastFrame ? Math.min(0.1, (ts - lastFrame) / 1000) : 0; tNow += dtw * Number($('speed').value); if (tNow >= S.T) { tNow = S.T; setPlaying(false); } }
+    lastFrame = ts;
+    $('scrub').value = Math.round(tNow / S.T * 1000); $('tRead').textContent = `${tNow.toFixed(0)} s`;
+    drawRing(); drawCursors();
+  }
+  requestAnimationFrame(frame);
+}
+function setPlaying(p) { playing = p; $('play').textContent = p ? 'Pause' : 'Play'; }
+
+// ---------- controls ----------
+let pending = null;
+function rerun(keepTime = false) {
+  clearTimeout(pending);
+  pending = setTimeout(() => {
+    P.dt = P.dtAuto ? P.l / (P.v / 3.6) : P.dt; $('dt').value = +P.dt.toFixed(2);
+    S = simulate(P); if (!keepTime) tNow = 0; tNow = Math.min(tNow, S.T); hl = Math.min(hl, S.m - 1); $('hlName').textContent = hl + 1;
+    renderSummary(); drawStatic(); lastFrame = 0;
+  }, 60);
+}
+function bindRange(id, out, key, f = x => x) { const el = $(id); const upd = () => { P[key] = Number(el.value); $(out).textContent = f(P[key]); }; el.addEventListener('input', () => { upd(); rerun(); }); upd(); }
+bindRange('m', 'mOut', 'm', x => x);
+bindRange('l', 'lOut', 'l', x => `${x} m`);
+bindRange('alpha', 'aOut', 'alpha', x => x.toFixed(2));
+for (const [id, key] of [['v', 'v'], ['w', 'w'], ['rhomax', 'rhomax'], ['T', 'T'], ['fill', 'fill'], ['dt', 'dt']]) {
+  $(id).addEventListener('change', () => { const el = $(id), x = Number(el.value); if (!Number.isFinite(x) || x < Number(el.min) || x > Number(el.max)) { el.value = P[key]; return; } P[key] = x; if (key === 'v' && P.w >= P.v) { P.w = Math.max(5, P.v - 5); $('w').value = P.w; } rerun(); });
+}
+$('dtAuto').addEventListener('change', e => { P.dtAuto = e.target.checked; $('dt').disabled = P.dtAuto; rerun(); });
+$('ccOn').addEventListener('click', () => { P.cc = true; $('ccOn').setAttribute('aria-pressed', 'true'); $('ccOff').setAttribute('aria-pressed', 'false'); rerun(); });
+$('ccOff').addEventListener('click', () => { P.cc = false; $('ccOff').setAttribute('aria-pressed', 'true'); $('ccOn').setAttribute('aria-pressed', 'false'); rerun(); });
+document.querySelectorAll('[data-ic]').forEach(b => b.addEventListener('click', () => { P.ic = b.dataset.ic; document.querySelectorAll('[data-ic]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); $('redraw').disabled = P.ic !== 'random'; rerun(); }));
+$('redraw').addEventListener('click', () => { P.seed = (P.seed * 7919 + 13) % 1000003; rerun(); });
+$('play').addEventListener('click', () => { if (S && tNow >= S.T) tNow = 0; setPlaying(!playing); });
+$('restart').addEventListener('click', () => { tNow = 0; setPlaying(true); });
+$('scrub').addEventListener('input', e => { if (S) { tNow = Number(e.target.value) / 1000 * S.T; } });
+for (const id of ['pq', 'pr', 'ps']) {
+  const cv = $(id); let down = false;
+  const seek = e => { const L = layers[id]; if (!L) return; const r = cv.getBoundingClientRect(); const x = e.clientX - r.left; tNow = Math.max(0, Math.min(S.T, (x - L.ax.x0) / (L.ax.x1 - L.ax.x0) * S.T));
+    if (id === 'ps') { const y = e.clientY - r.top; if (y >= L.ax.y1 && y <= L.ax.y0) { const i = S.m - 1 - Math.floor((y - L.ax.y1) / (L.ax.y0 - L.ax.y1) * S.m); if (i !== hl && i >= 0 && i < S.m) { hl = i; $('hlName').textContent = hl + 1; drawStatic(); } } } };
+  cv.addEventListener('pointerdown', e => { down = true; seek(e); }); cv.addEventListener('pointermove', e => { if (down) seek(e); });
+  window.addEventListener('pointerup', () => { down = false; });
+}
+function sectionAt(e) {
+  if (!ringGeom || !S) return -1; const r = $('ring').getBoundingClientRect(); const x = e.clientX - r.left - ringGeom.cx, y = e.clientY - r.top - ringGeom.cy;
+  const d = Math.hypot(x, y); if (Math.abs(d - ringGeom.R) > ringGeom.band) return -1;
+  let a = Math.atan2(y, x) + Math.PI / 2; if (a < 0) a += 2 * Math.PI; return Math.floor(a / (2 * Math.PI) * S.m) % S.m;
+}
+$('ring').addEventListener('pointermove', e => { const i = sectionAt(e); if (i < 0) { $('ringRead').textContent = 'Hover a section'; return; } const k = Math.min(S.K, Math.round(tNow / S.dt)); const N = S.N[k * S.m + i]; $('ringRead').textContent = `Section ${i + 1}: ${N.toFixed(1)} cars · ${(N / S.l * 1000).toFixed(1)} veh/km`; });
+$('ring').addEventListener('click', e => { const i = sectionAt(e); if (i >= 0) { hl = i; $('hlName').textContent = hl + 1; drawStatic(); } });
+$('ring').addEventListener('keydown', e => { if (!S) return; if (e.key === 'ArrowRight') { hl = (hl + 1) % S.m; } else if (e.key === 'ArrowLeft') { hl = (hl - 1 + S.m) % S.m; } else if (e.key === ' ') { e.preventDefault(); setPlaying(!playing); return; } else return; $('hlName').textContent = hl + 1; drawStatic(); });
+window.addEventListener('resize', () => { drawStatic(); });
+const reTheme = () => { readColors(); drawStatic(); };
+try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', reTheme); } catch (e) {}
+new MutationObserver(reTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlaying(false);
+readColors(); rerun(); requestAnimationFrame(frame);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => drawStatic());
+})();
+</script>
+
+</html>
